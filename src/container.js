@@ -22,11 +22,11 @@
                 throw "name prop is not valid"
             }
 
-            if (typeof object.value === undefined) {
+            if (typeof object.target === undefined) {
                 throw "value prop is not valid"
             }
 
-            if (object.value == undefined) {                
+            if (object.target == undefined) {                
                 // rejects async
                 if (waiting.hasOwnProperty(name)) {
                     if (waiting[name].hasOwnProperty('reject')) {
@@ -39,7 +39,7 @@
             }
 
             // add as container property
-            self[name] = object.value;
+            self[name] = object.target;
 
             dispatchWaiting(name)
             return true;
@@ -66,7 +66,7 @@
                 throw "name prop is not valid"
             }
 
-            if (obj.init === undefined || typeof obj.init !== "function") {                
+            if (obj.target === undefined || typeof obj.target !== "function") {                
                 // rejects async
                 if (waiting.hasOwnProperty(name)) {
                     if (waiting[name].hasOwnProperty('reject')) {
@@ -86,7 +86,7 @@
                 // DI auto
                 else {
                     try {
-                        var names = obj.init.toString().match(/\(([^)]+)\)/)[1].replace(/\s/g,'').split(",");
+                        var names = obj.target.toString().match(/\(([^)]+)\)/)[1].replace(/\s/g,'').split(",");
                     } catch (error) {
                         var names = [];
                     }
@@ -95,20 +95,19 @@
                     var inject = names.map(function(name){
                         return self.proxy[name];
                     })
-                    console.log(inject, "inject");
-                    return new obj.init(...inject)
+                    return new obj.target(...inject)
                 }    
             }            
            
             // add lazy
             if (type == "service") {
-                lazy[name] = cb ? cb : obj.init;
+                lazy[name] = cb ? cb : obj.target;
                 if (obj.lazy === false) {
                     get(name)
                 }
             }
             else if (type == "factory") {
-                factory[name] = cb ? cb : obj.init;                
+                factory[name] = cb ? cb : obj.target;                
             }
      
 

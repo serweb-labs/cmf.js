@@ -398,10 +398,7 @@
             api.getCollection(self, ignoreCache);
         }
 
-        function next(result) {   
-            
-            console.log("result", result);
-
+        function next(result) {
             // pagination
             self.limit = result.limit;
             self.count = result.count;

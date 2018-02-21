@@ -173,7 +173,7 @@
         var vm = this;
         var tasks = new cmf.StoreCollection("tasks");
         
-        console.log(cmf.tasks);
+        console.log("collection:", cmf.tasks);
 
         tasks.on('next', function(e){
           vm.tasks = this.data;          
@@ -182,16 +182,6 @@
         tasks.on('next:item', function(e){
           //console.log(this.data);
         })
-
-        /*
-        
-        tasks.mutate.addRelated('clients', 5);
-        tasks.mutate.removeRelated('clients', 5);
-        tasks.mutate.setValue('title', 'bimeken');
-        tasks.mutate.setValues('title', 'bimeken');
-
-        tasks.mutate.patch({...});*/
-        
 
         tasks.fetch();
       }

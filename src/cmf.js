@@ -42,39 +42,39 @@
          container.service({
             name: "api",
             di: ['firebaseConfig'],
-            init: firebaseRtdbAdapter
+            target: firebaseRtdbAdapter
         });
 
         container.service({
             name: "schemaStatement",
-            init: SchemaStatement
+            target: SchemaStatement
         });
 
         container.service({
             name: "schema",
-            init: SchemaService
+            target: SchemaService
         });
         
         container.service({
             name: "viewsStatement",
-            init: ViewsStatement
+            target: ViewsStatement
         });
 
         container.service({
             name: "views",
-            init: ViewsService
+            target: ViewsService
         });
 
         container.service({
             name: "StoreItem",
             di: false,
-            init: function() {
+            target: function() {
                 var container = this;
                 var config = {
                     api: this.api,
                     schema: this.schema,
                     init: function() {
-                        container.value({ name: this.uri, value: this});
+                        container.value({ name: this.uri, target: this});
                     }
                 };
                 return StoreItem.bind(null, config);
@@ -84,13 +84,13 @@
         container.service({
             name: "StoreCollection",
             di: false,
-            init: function() {
+            target: function() {
                 var container = this;
                 var config = {
                     api: this.api,
                     schema: this.schema,
                     init: function() {
-                        container.value({ name: this.uri, value: this});
+                        container.value({ name: this.uri, target: this});
                     }
                 };
                 return StoreCollection.bind(null, config);
@@ -99,7 +99,7 @@
 
         container.service({
             name: "person",
-            init: person
+            target: person
         });
 
         return container;
