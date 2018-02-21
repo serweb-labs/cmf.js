@@ -110,9 +110,7 @@
             else if (type == "factory") {
                 factory[name] = cb ? cb : obj.init;                
             }
-            else if (type == "object") {
-                factory[name] = cb ? cb : obj.init;                
-            }
+     
 
             dispatchWaiting(name);
     
@@ -150,7 +148,7 @@
     
             
         function has(name) {
-            return self.hasOwnProperty(name) || lazy.hasOwnProperty(name);
+            return self.hasOwnProperty(name) || lazy.hasOwnProperty(name) || factory.hasOwnProperty(name);
         }
     
         function isLazy(name) {
@@ -164,12 +162,17 @@
         function get(name) {
             if (has(name)) {
                 if (isFactory(name)) {
-                    self[name] = factory[name].bind(self.proxy);
+                    return factory[name].bind(self.proxy);
                 }
                 else if (isLazy(name)) {
-                    self[name] = lazy[name].bind(self.proxy)()
+                    if (!self.hasOwnProperty(name)) {
+                        self[name] = lazy[name].bind(self.proxy)();                   
+                    }                    
+                    return self[name];
                 }
-                return self[name];
+                else {
+                    return self[name];
+                }
             }
             return false;
         }
