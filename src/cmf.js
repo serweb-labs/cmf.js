@@ -40,6 +40,7 @@
 
          container.service({
             name: "api",
+            di: ['firebaseConfig'],
             init: firebaseRtdbAdapter
         });
 

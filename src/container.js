@@ -81,7 +81,7 @@
             if (obj.di !== false) {
                 // DI exlicit
                 if (Array.isArray(obj.di)) {
-                    var names = di;
+                    var names = obj.di;
                 }
                 // DI auto
                 else {
