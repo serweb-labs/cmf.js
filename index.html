@@ -152,7 +152,7 @@
                 <button :class="className"
                     @click.self="$emit('complete')"
                 >
-                  {{ task.get.value('title') }}
+                  {{ task.get.val('title') }}
                 </button>
                 <button class="tasks__item__remove button alert pull-right"
                         @click="$emit('remove')"
@@ -207,8 +207,8 @@
         methods: {
           addTask: function addTask() {
             if (this.newTask) {
-              var b = cmf.store("tasks", null);
-              b.mutate.set({values: {title: this.newTask, contenttype: "tasks", completed: false}})
+              var b = new cmf.StoreItem("tasks", null);
+              b.mutate.setVals({title: this.newTask, contenttype: "tasks", completed: false});
               b.create();
               this.tasks.push(b);
               this.newTask = '';
@@ -221,7 +221,7 @@
           removeTask: function removeTask(task, index) {
             //this.tasks.splice(index, 1);
             task.remove();
-            task.save();
+            //task.save();
           },
           clearCompleted: function clearCompleted() {
             var remove = this.tasks.filter(this.isCompleted);
@@ -238,7 +238,7 @@
             return !this.isCompleted(task);
           },
           isCompleted: function isCompleted(task) {
-            return task.get.value('completed');
+            return task.get.val('completed');
           }
         }
       });
@@ -249,7 +249,7 @@
         computed: {
           className: function className() {
             var classes = ['tasks__item__toggle'];
-            if (this.task.get.value('completed')) {
+            if (this.task.get.val('completed')) {
               classes.push('tasks__item__toggle--completed');
             }
             return classes.join(' ');

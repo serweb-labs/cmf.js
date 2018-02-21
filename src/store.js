@@ -55,7 +55,6 @@
         self.ContentEvent = ContentEvent.bind(null, self);
         self.happened = happened.bind(self);         
         self.copy = copy;
-        self.hasRelation = hasRelation;
         self.addAction = addAction.bind(self);
         self.addMutation = addMutation.bind(self);
         self.addGetter = addGetter.bind(self);
@@ -67,16 +66,18 @@
 
         if (config.hasOwnProperty('init')) {
             config.init.apply(this);
-        }
-        
+        }        
 
         // default getters
-        self.addGetter('value', value);
-        self.addGetter('values', values);
-        self.addGetter('related', related);
-
+        self.addGetter('val', getVal);
+        self.addGetter('rel', getRel);
+        self.addGetter('vals', getVals);
+        self.addGetter('rels', getRels);
+        self.addGetter('raw', getRaw);
+        self.addGetter('hasRel', hasRel);
+        
         // default actions
-        self.addAction('fetch', get);
+        self.addAction('fetch', fetch);
         self.addAction('next', next);
         self.addAction('error', error);
         self.addAction('remove', deleteItem);
@@ -87,15 +88,108 @@
         self.addAction('setUri', setUri);
         self.addAction('setQuery', setQuery);
 
-        // default mutations
-        self.addMutation('set', setAll);
-        //addMutation('value', set);
-        //addMutation('values', set);
-        //addMutation('relation', set);
-        //addMutation('relations', set);
-        //addMutation('addRelation', set);
+        // register default mutations
+        self.addMutation('setRaw', setRaw);
+        self.addMutation('setVal', setVal);
+        self.addMutation('setVals', setVals);
+        self.addMutation('setRel', setRel);
+        self.addMutation('setRels', setRels);
+        self.addMutation('addVal', addVal);
+        self.addMutation('addRel', addRel);
+        self.addMutation('delVal', delVal);
+        self.addMutation('delRel', delRel);
 
-        function get(ignoreCache) {
+        // default getter
+        // handlers
+        function getVal(field) {
+            return this.data.values[field];
+        }
+
+        function getRel(field) {
+            return this.data.relations[field];
+        }
+
+        function getVals(field) {
+            return this.data.values;
+        }
+
+        function getRels(field) {
+            return this.data.relations;
+        }
+
+        function getRaw(field) {
+            return this.data;
+        }
+
+        function hasRel(field, key) {
+            var key = key || false;
+            if (this.data.relations.hasOwnProperty(field)) {
+                if (key) {
+                    return this.data.relations[field].includes(key)                        
+                }
+                else {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // default mutation
+        // handlers
+        function setRaw(data) {
+            this.data.values =  data.values || {};
+            this.data.relations =  data.relations || {};
+            return true;
+        }
+
+        function setVal(field, data) {
+            this.data.values[field] = data;
+            return true;
+        }
+
+        function setVals(data) {
+            console.log(data.title);
+            this.data.values = data;
+            return true;
+        }
+
+        function setRel(field, data) {
+            this.data.relations[field] = data;
+            return true;
+        }
+
+        function setRels(data) {
+            this.data.relations = data;
+            return true;
+        }
+
+        function addVal(field, data) {
+            this.data.values[field] = data;
+            return true;
+        }
+
+        function addRel(field, key) {
+            this.data.relations[field].push(key);
+            return true;
+        }
+
+        function delVal(field, key) {
+            delete this.data.values[field];
+            return true;        
+        }
+
+        function delRel(field, key) {
+            var array = this.data.relations[field];
+            var index = array.indexOf(key);
+            if (index > -1) {
+                array.splice(index, 1);
+                return true;
+            }
+            return false;            
+        }
+
+
+        function fetch(ignoreCache) {
             var ignoreCache = ignoreCache || false;
             // dispatch before event
             let event = new self.ContentEvent('next:before');
@@ -106,7 +200,7 @@
         }
 
         function next(result) {
-            this.mutate.set(result);
+            this.mutate.setRaw(result);
             // events
             if(!this.happened('next:first')) {
                 let event = new this.ContentEvent('next:first', {success: true});
@@ -123,11 +217,6 @@
             let event = new this.ContentEvent('next', {success: false});
             this.dispatchEvent(event)
             if (event.defaultPrevented) {return;}
-        }
-
-        function setAll(result) {
-            this.data.values = result.values || {};
-            this.data.relations = result.relations || {};
         }
 
         function createItem() {
@@ -207,40 +296,12 @@
 
         function deleteItem() {
             // todo: remove instance
-            api.deleteContent(self).then(function() {
+            api.deleteContent(self).then(function(data) {
+                console.log("sdasdas", data);
                 let event = new self.ContentEvent('delete', {success: true, id: self.id}); 
                 self.dispatchEvent(event);
                 if (event.defaultPrevented) {return;}
             })
-        }
-
-        function removeRelated(ct, id, sync) {
-            
-        }
-
-        function addRelated(ct, id, sync) {
-
-        }
-
-        function setRelated(ct, id, sync) {
-            
-        }
-
-        function setValues(ct, id, sync) {
-            
-        }
-
-        function hasRelation(ct, id) {
-            var id = id || false;
-            if (self.data.relations.hasOwnProperty(ct)) {
-                if (id) {
-                    return self.data.relations[ct].includes(id)                        
-                }
-                else {
-                    return true;
-                }
-            }
-            return false;
         }
 
 
@@ -412,10 +473,8 @@
             for (var item of result.items) {        
                 var content = new StoreItem(config, item.values.contenttype, item.values.id)
                 addItemEvents(content);
-                //console.log(item, "ññ")
                 content.next(item);
                 list.push(content);
-                //content.fetch();
             }
             
             self.data = list;
