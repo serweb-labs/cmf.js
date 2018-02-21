@@ -22,8 +22,8 @@
 
         var api = config.api;
         var schema = config.schema
-        var library = config;
 
+        
         // constructor
         var self = this;
 
@@ -64,7 +64,10 @@
         /****************************
          *        INTERNALS
          ****************************/
-        library.register((name || self.uri), self);
+
+        if (config.hasOwnProperty('init')) {
+            config.init.apply(this);
+        }
         
 
         // default getters
@@ -331,7 +334,6 @@
 
         var api = config.api;
         var schema = config.schema
-        var library = config;
 
         // constructor
         var self = this;
@@ -368,7 +370,11 @@
         /****************************
          *        INTERNALS
          ****************************/
-        library.register((name || self.uri), self);
+
+
+        if (config.hasOwnProperty('init')) {
+            config.init.apply(this);
+        }
 
         // default actions
         self.addAction('fetch', get);

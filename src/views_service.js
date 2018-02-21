@@ -5,7 +5,7 @@
 
     */
 
-function ViewsService() {
+function ViewsService(viewsStatement) {
 
     var self = this;
 
@@ -14,6 +14,7 @@ function ViewsService() {
     self.getPlaces = getPlaces;
     self.statement = {};
     self.places = {};
+    self.statement = viewsStatement || {};
 
     function set(statement) {            
         self.statement = statement;

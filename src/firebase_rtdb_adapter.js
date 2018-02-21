@@ -5,7 +5,7 @@
      * @name data.factory
      * @description get, parse and set shared data
      */
-    function firebaseRtdbAdapter() {
+    function firebaseRtdbAdapter(firebaseConfig) {
 
         /*******************************
         *              API
@@ -22,12 +22,8 @@
 
         // Set the configuration for your app
         // TODO: Replace with your project's config object
-        var config = {
-            apiKey: "myApikey",
-            authDomain: "myproject.firebaseapp.com",
-            databaseURL: "https://myproject.firebaseio.com",
-            storageBucket: "bucket.appspot.com"
-        };
+        var config = firebaseConfig || {};        
+
         
         firebase.initializeApp(config);
 

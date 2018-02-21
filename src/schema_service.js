@@ -5,13 +5,13 @@
 
     */
 
-function SchemaService(statement) {
+function SchemaService(schemaStatement) {
 
     var self = this;
 
     self.set = set;
     self.get = get;
-    self.statement = statement || {};
+    self.statement = schemaStatement || {};
 
     function set(statement) {
         self.statement = statement;

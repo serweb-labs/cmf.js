@@ -8,6 +8,10 @@
 
     function cmf() {
 
+        function person(api, schema){
+            this.api = api;
+            this.schema = schema;
+        }
 
         /************************************
          *
@@ -15,37 +19,83 @@
          *
          ************************************/      
 
-        var container = newContainer();
-        var api = new firebaseRtdbAdapter();
-        var schema = new SchemaStatement();
-        var views = new ViewsStatement();
+        var container = new Container();
 
         /************************************
          *
          *          BOOTSTRAPING
          *
          ************************************/
-        container.register('api', api);
         
-        container.register('schemaStatement', schema);
-        
-        container.register('viewsStatement', views);        
-        
-        container.service('schema', function(){
-            return new SchemaService(this.schemaStatement)
+
+        container.value({
+            name: "firebaseConfig",
+            value: {
+                apiKey: "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                authDomain: "xxxxxx.firebaseapp.com",
+                databaseURL: "https://xxxxxx.firebaseio.com/",
+                storageBucket: "bucket.appspot.com"
+            }
         });
 
-        container.service('views', function(){
-            return new ViewsService(this.viewsStatement)
-        });
-        
-        container.service('store', function(){
-            return store.bind(null, this);
+         container.service({
+            name: "api",
+            init: firebaseRtdbAdapter
         });
 
+        container.service({
+            name: "schemaStatement",
+            init: SchemaStatement
+        });
+
+        container.service({
+            name: "schema",
+            init: SchemaService
+        });
+        
+        container.service({
+            name: "viewsStatement",
+            init: ViewsStatement
+        });
+
+        container.service({
+            name: "views",
+            init: ViewsService
+        });
+
+        container.service({
+            name: "StoreItem",
+            di: false,
+            init: function() {
+                return StoreItem.bind(null, config);
+            }
+        });
+
+        container.service({
+            name: "StoreCollection",
+            di: false,
+            init: function() {
+                var container = this;
+                var config = {
+                    api: this.api,
+                    schema: this.schema,
+                    init: function() {
+                        container.value({ name: this.uri, value: this});
+                    }
+                };
+                return StoreCollection.bind(null, config);
+            }
+        });
+
+        container.service({
+            name: "person",
+            init: person
+        });
+
+        /*
         container.factory('storeItem', function($ct, $id, $name){
             return StoreCollection.bind(this, $ct, $id, $name);
-        });
+        }, false);
 
         container.factory('storeItem1', function($ct, $id, $name){
             return new StoreCollection(this, $ct, $id, $name);
@@ -61,7 +111,7 @@
 
         container.register('storeCollection', function(){
             return StoreCollection.bind(null, config);
-        });
+        });*/
 
         return container;
     }
