@@ -68,6 +68,14 @@
             name: "StoreItem",
             di: false,
             init: function() {
+                var container = this;
+                var config = {
+                    api: this.api,
+                    schema: this.schema,
+                    init: function() {
+                        container.value({ name: this.uri, value: this});
+                    }
+                };
                 return StoreItem.bind(null, config);
             }
         });
