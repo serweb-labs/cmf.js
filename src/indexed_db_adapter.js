@@ -1,251 +1,350 @@
 (function() {
 'use strict';
     window.indexedDBAdapter = indexedDBAdapter;
+
     /**
-     * @name data.factory
-     * @description get, parse and set shared data
+     * @name indexedDBAdapter
+     * @implement adapterInterface
+     * @description used by StorageItem 
+     * and StorageCollection,describes a
+     * way to communicate with indexedDB
      */
-    function indexedDBAdapter() {
+    function indexedDBAdapter(schema, idsGenerator, firebaseIdbSync, schemaStatement, _) {
+        
+        var self = this;
+        var mydb = null;
+        var opened = false;        
+        var softDelete = true;
+        var observers = {};
+        var collections = {};
 
         /*******************************
         *              API
         ********************************/
 
-         // content
-        this.getContent = getContent;
-        this.getCollection = getCollection;
-        this.createContent = createContent;
-        this.updateContent = updateContent;
-        this.deleteContent = deleteContent;
-
+        // content intarface
+        self.getContent = getContent;
+        self.getCollection = getCollection;
+        self.createContent = createContent;
+        self.updateContent = updateContent;
+        self.deleteContent = deleteContent;
+        self.supportedOps = ["=", ">", ">=", "<", "<=", "<>", "!=", "LIKE", "CONTAINS", "BETWEEN"];
         
-        // Helpers
-        this.parse = parse;
-        this.addToCache = addToCache;
-        this.clearCache = clearCache;
-        this.removeToCache = removeToCache;        
+        self.getDb = getDb;
+        self.db = null;
+        self.waiting = [];
+        self.opened = false;
 
-        var objects = {}
-
-        /*******************************
-        *           INTERNALS
-        ********************************/
-        const dbPromise = idb.open('keyval-store', 1, upgradeDB => {
-            upgradeDB.createObjectStore('keyval');
-          });
-
-          const dbPromise2 = idb.open('keyval-store', 2, upgradeDB => {
-            // Note: we don't use 'break' in this switch statement,
-            // the fall-through behaviour is what we want.
-            switch (upgradeDB.oldVersion) {
-              case 0:
-                upgradeDB.createObjectStore('keyval');
-              case 1:
-                upgradeDB.createObjectStore('objs', {keyPath: 'id'});
-            }
-          });
-          
-          const idbKeyval = {
-            get(key) {
-              return dbPromise.then(db => {
-                return db.transaction('keyval')
-                  .objectStore('keyval').get(key);
-              });
-            },
-            set(key, val) {
-              return dbPromise.then(db => {
-                const tx = db.transaction('keyval', 'readwrite');
-                tx.objectStore('keyval').put(val, key);
-                return tx.complete;
-              });
-            },
-            delete(key) {
-              return dbPromise.then(db => {
-                const tx = db.transaction('keyval', 'readwrite');
-                tx.objectStore('keyval').delete(key);
-                return tx.complete;
-              });
-            },
-            clear() {
-              return dbPromise.then(db => {
-                const tx = db.transaction('keyval', 'readwrite');
-                tx.objectStore('keyval').clear();
-                return tx.complete;
-              });
-            },
-            keys() {
-              return dbPromise.then(db => {
-                const tx = db.transaction('keyval');
-                const keys = [];
-                const store = tx.objectStore('keyval');
-          
-                // This would be store.getAllKeys(), but it isn't supported by Edge or Safari.
-                // openKeyCursor isn't supported by Safari, so we fall back
-                (store.iterateKeyCursor || store.iterateCursor).call(store, cursor => {
-                  if (!cursor) return;
-                  keys.push(cursor.key);
-                  cursor.continue();
-                });
-          
-                return tx.complete.then(() => keys);
-              });
-            }
-          };
-
-        function parse(data) {
-            return JSON.parse(data);
-        }
+        // sync
+        firebaseIdbSync.sync(self, schema);
 
         /**
          * @name getCollection
-         * @description get a item by id
-         * @param {string} id
-         * @return promise
+         * @description get a collection by contenttype
+         * @param {content} StoreCollection
+         * @return Promise
          */
         function getCollection(content, ignoreCache) {
+            return new Promise((resolve, reject) => {                
+                content.checkQuery(self.supportedOps);                            
+                getDb().then(function(db){
+                    var objectStore = db.transaction([content.contenttype], "readonly").objectStore(content.contenttype);
+                    var items = [];
+                    var first = (content.limit * content.page) - content.limit + 1;
+                    var last = (content.limit * content.page);
+                    var filters = (Object.keys(content.query).length > 0);
 
-            dbPromise2.then(db => {
-                return db.transaction('objs')
-                  .objectStore('objs').getAll();
-              }).then(data => {
-                var items = [];                
-                data.forEach((item) => {
-                    let relations = digestRelations(content, item);
-                    items.push({values: item, relations: relations})
-                })
-                console.log(items);
-                content.next({items: items});  
-                
-              });
+                    var onNext = function (){
 
-              /*
-              var values = result.val();                
-              var data = toArray(values)
-              var items = [];*/
+                        if (!observers.hasOwnProperty(content.contenttype)) {
+                            var txn = db.transaction([content.contenttype], 'readonly');
+                            var control = txn.observe(observerFunction);
+                            txn.oncomplete = function() {
+                                observers[content.contenttype] = true;
+                            }
+                        }
 
-        
+                        if (!collections.hasOwnProperty(content.contenttype)) {
+                            collections[content.contenttype] = [];
+                        }
+                        
+                        collections[content.contenttype].push(content);
+                        resolve({items: orderAndPaginate(content, items, first, last)});     
+                    }
 
-              
- 
+                    var request = objectStore.openCursor(); 
+                     
+                    request.onerror = function(event) {
+                        reject('unknow error');
+                    };
+
+                    request.onsuccess = function(event) {
+                        var cursor = event.target.result;
+                        var advance = false;
+                        if(cursor) {
+                            if (!filters && !advance) {
+                                advance = true;
+                                cursor.advance(first);
+                            }
+                            if (filterQuery(content, cursor)){
+                                items.push(cursor.value);                                
+                                if (content.query.filter.key == "id" && items.length >= last) {                                    
+                                    onNext();
+                                    return;    
+                                }      
+                            }                            
+                            cursor.continue();                            
+                        }
+                        else {
+                            onNext();                          
+                        }
+                    };
+
+                })              
+            });     
         }
 
         /**
          * @name getContent
          * @description get a item by id
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function getContent(content, ignoreCache) {
-            var ct = firebase.database().ref(content.uri);
-            // suscribe
-            ct.on('value', function(result) {
-                var values = result.val();
-                var relations = digestRelations(content, result.val());
-                content.next({values: values, relations: relations});
-            });              
+            return new Promise((resolve, reject) => {
+                getDb().then(function(db){                    
+                    var objectStore = db.transaction([content.contenttype], "readonly").objectStore(content.contenttype);
+                    var request = objectStore.get(content.id);         
+                    request.onerror = function(event) {
+                        reject('unknow error');
+                    };
+                    request.onsuccess = function(event) {
+                        var data = event.target.result;                
+                        content.next({values: data.values, relations: data.relations});                    
+                    };
+                });
+            });           
         }
 
         /**
          * @name createContent
          * @description create a item
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function createContent(content) {
-            return new Promise((resolve, reject) => {            
-                var timestamp = Date.now() / 1000 | 0;
-
-                idbKeyval.set(timestamp, content.data).then(function(){
-                    resolve(content.data)                
-                })
+            return new Promise((resolve, reject) => {
+                getDb().then(function(db){
+                    var key = idsGenerator();
+                    var ts = Date.now();
+                    content.data.values.created = ts;
+                    content.data.values.changed = ts;
+                    content.data.values.id = key;
+                    content.data.id = key;
+                    var objectStore = db.transaction([content.contenttype], "readwrite").objectStore(content.contenttype);
+                    var request = objectStore.add(content.data);
+                    request.onsuccess = function(event) {
+                        resolve({data: content.data});    
+                    };               
+                    request.onerror = function(event) {
+                        reject('unknow error');
+                    };
+                });
             });
         }
 
         /**
-         * @name createContent
-         * @description create a item by id
-         * @param {string} id
-         * @return promise
+         * @name updateContent
+         * @description update a item by id
+         * @param {content} StoreItem
+         * @return Promise
          */
-        function updateContent(content) {
+        function updateContent(content) {           
             return new Promise((resolve, reject) => {
-                var ct = firebase.database().ref(content.uri);
-                ct.set(content.data.values).then(function(){
-                    var result = content.data;
-                    resolve({data: result})
-                })
+                getDb().then(function(db){
+                    var objectStore = db.transaction([content.contenttype], "readwrite").objectStore(content.contenttype);
+                    var request = objectStore.get(content.id);                
+                    request.onerror = function(event) {
+                        reject('unknow error');
+                    };                
+                    request.onsuccess = function(event) {
+                        var data = request.result;
+                        data = content.data;
+                        data.values.changed = Date.now();
+                        data.id = data.values.id;                        
+                        var requestUpdate = objectStore.put(data);
+                        requestUpdate.onerror = function(event) {
+                            reject('unknow error');
+                        };
+                        requestUpdate.onsuccess = function(event) {
+                            resolve({data: event.target.result});                 
+                        };
+                    };
+                });
             });
+
         }
 
         /**
          * @name deleteContent
          * @description remove a item by id
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function deleteContent(content) {
             return new Promise((resolve, reject) => {
-                var ct = firebase.database().ref(content.uri);
-                ct.remove().then(function(){
-                    resolve()
+                getDb().then(function(db){
+                    var request = db.transaction([content.contenttype], "readwrite")
+                    .objectStore(content.contenttype)
+                    .delete(content.id);
+                    request.onsuccess = function(event) {
+                        resolve("ok")                    
+                    };
+                });
+            });
+        }
+       
+        /*******************************
+        *           INTERNALS
+        ********************************/
+        
+        function getDb() {
+            return new Promise((resolve, reject) => {
+                if (mydb !== null) {                    
+                    resolve(mydb);
+                }
+                else {
+                    self.waiting.push({resolve: resolve, reject: reject});
+                }
+                if (!opened) {
+                    openDb();
+                }
+            });  
+        }
+
+        function openDb() {
+            opened = true;
+            var req = indexedDB.open("db_store", schema.version());
+            req.onsuccess = function (evt) {     
+                mydb = req.result;
+                self.waiting.forEach(function(handlers){
+                    handlers.resolve(mydb);
                 })
+            };
+
+            req.onerror = function (evt) {  
+                self.waiting.forEach(function(resolver){
+                    handlers.reject("unknow error");                    
+                })
+            };
+        
+            req.onupgradeneeded = function (evt) {
+                var db = evt.currentTarget.result;
+
+                var arr = Array.from(db.objectStoreNames);
+                arr.forEach(function(ct) {
+                    if(!schema.keys().has(ct)) {
+                        var store = db.deleteObjectStore(ct);
+                    }
+                });
+
+                schema.keys().forEach(function(ct) {
+                    if(!db.objectStoreNames.contains(ct)) {
+                        var store = db.createObjectStore(ct, { keyPath: "id" });
+                    }
+                });                
+            };
+        }
+
+        function getKeyByOrder(object, from) {
+            return new Promise((resolve, reject) => {
+                var advance = false;
+                var counter = 0;
+                var openCursor = object.openCursor();
+                
+                openCursor.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if(cursor) {
+                        counter++;
+                        if (!advance && counter < from) {
+                            advance = true;
+                            cursor.advance(from);
+                        }
+                        else {
+                            resolve(cursor.key);
+                        }
+                    }
+                    else {
+                        resolve(null);
+                    }
+                }
+                
+                openCursor.onerror = function(event){
+                    reject("unknow error");
+                }
             });
         }
 
-        /**
-         * @name addToCache
-         * @description add to cache
-         * @param {string} id
-         * @return promise
-         */
-        function addToCache(contenttype, id, data) {
-
-        }
-
-        /**
-         * @name removeToCache
-         * @description remove a item of cache
-         * @param {string} id
-         * @return promise
-         */
-        function removeToCache() {
-        }
-
-        /**
-         * @name clearCache
-         * @description clear all cache
-         * @param {string} id
-         * @return promise
-         */
-        function clearCache() {
-        }
-
-        function digestRelations(content, data){            
-            var schema  = content.schema.relations;
-            var relations = {};
-            for (var key in schema) {
-                if (!relations.hasOwnProperty(key)){
-                    relations[key] = [];
-                }
-                if (schema.hasOwnProperty(key)) {
-                    if (data.hasOwnProperty(key)) {
-                        let uri = schema[key].contenttype + "/" + data[key];
-                        relations[key].push(uri)
+        function filterQuery(content, cursor) {
+            var object = content.query.filter;
+            for (var key in object) {
+                if (object.hasOwnProperty(key)) {
+                    var item = object[key];
+                    var val =  cursor.value.values[key];               
+                    switch (item.op) {
+                        case "=":
+                            return val == item.value;
+                        case ">":
+                            return val > item.value;
+                        case ">=":
+                            return val >= item.value;
+                        case "<":
+                            return val < item.value;
+                        case "<=":
+                            return val < item.value;
+                        case "<>":
+                        case "!=":
+                            return val != item.value;
+                        case "LIKE":
+                        case "CONTAINS":
+                            return val.includes(item.value);
+                        case "BETWEEN":
+                            var sp = val.split(",");
+                            return (item.value > sp[0] && item.value < sp[1])                
+                        default:
+                            return false;
                     }
                 }
             }
-
-            return relations;
+            return true;
         }
 
-        function toArray(object){
-            var arr = [];
-            for (var key in object) {
-                if (object.hasOwnProperty(key)) {
-                    arr.push(object[key]);                    
+
+        function orderAndPaginate(content, items, first, last) {
+            var orderedItems =  _.orderBy(items, function(e) {
+                return e.values[content.query.order.value]}, [content.query.order.key]
+            );
+            return orderedItems.slice((first - 1), last);            
+        }
+
+        function observerFunction(changes) {
+            // An object store that we're observing has changed.
+            changes.records.forEach(function(records, objectStoreName) {
+                records.forEach(function(change) {
+                // do something with change.type and change.key
+                var type = change.type;
+                switch (type) {
+                    case 'put':
+                    case 'add':
+                    case 'delete':
+                        console.log('key "', change.key, '" added.');
+                        collections[objectStoreName].forEach(function(content){
+                            content.fetch();
+                        });
+                    break;
                 }
-            }
-            return arr;
+                });
+            });
         }
 
     }

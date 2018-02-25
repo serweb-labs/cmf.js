@@ -1,104 +1,134 @@
 (function() {
 'use strict';
     window.firebaseRtdbAdapter = firebaseRtdbAdapter;
+
     /**
-     * @name data.factory
-     * @description get, parse and set shared data
+     * @name firebaseRtdbAdapter
+     * 
+     * @implement adapterInterface
+     * 
+     * @description used by StorageItem 
+     * and StorageCollection,describes a
+     * way to communicate with
+     * Firebase Realtime Database
+     * 
+     * @documentation: attention, in the testing phase!
+     * make sure that the firebase rules write to any user
+     *  {
+     *   "rules": {
+     *       ".read": "true",
+     *       ".write": "true"
+     *     }
+     *   }    
      */
     function firebaseRtdbAdapter(firebaseConfig) {
+
+        var self = this;
+
+        // initialize        
+        firebase.initializeApp((firebaseConfig || {}));
 
         /*******************************
         *              API
         ********************************/
 
-        // attention, in the testing phase!
-        // make sure that the firebase rules write to any user
-        // {
-        //    "rules": {
-        //        ".read": "true",
-        //        ".write": "true"
-        //   }
-        // }
-
-        // Set the configuration for your app
-        // TODO: Replace with your project's config object
-        var config = firebaseConfig || {};        
-
-        
-        firebase.initializeApp(config);
-
-
-        // content
+        // interface        
         this.getContent = getContent;
         this.getCollection = getCollection;
         this.createContent = createContent;
         this.updateContent = updateContent;
-        this.deleteContent = deleteContent;
-
+        this.deleteContent = deleteContent;      
+        self.supportedOps = ["=", ">", ">=", "<", "<=", "<>", "!=", "LIKE", "CONTAINS", "BETWEEN"];
         
-        // Helpers
-        this.parse = parse;
-        this.addToCache = addToCache;
-        this.clearCache = clearCache;
-        this.removeToCache = removeToCache;        
-
-        var objects = {}
-
-        /*******************************
-        *           INTERNALS
-        ********************************/
-
-        function parse(data) {
-            return JSON.parse(data);
-        }
-
         /**
          * @name getCollection
-         * @description get a item by id
-         * @param {string} id
-         * @return promise
+         * @description get a collection by contenttype
+         * @param {content} StoreCollection
+         * @return Promise
          */
         function getCollection(content, ignoreCache) {
-            var ct = firebase.database().ref(content.uri);
-            // suscribe                
-            ct.on('value', function(result) {
-                var values = result.val();                
-                var data = toArray(values)
-                var items = [];
+            return new Promise((resolve, reject) => {
+                content.checkQuery(self.supportedOps);
 
-                data.forEach((item) => {
-                    let relations = digestRelations(content, item);
-                    items.push({values: item, relations: relations})
-                })
+                var ct = firebase.database().ref(content.uri).orderByKey();
+                var count = 0;
 
-                content.next({items: items});                   
+                // optimization
+                if (Object.keys(content.query).length == 0) {
+                    ct.limitToFirst(content.limit);
+                }
+
+                // suscribe                
+                ct.on('value', function(result) {
+                    count++;
+                    var values = result.val();                
+                    var data = toSet(values);
+                    var items = [];
+                    var first = (content.limit * content.page) - content.limit + 1;
+                    var last = (content.limit * content.page);
+
+                    // var from = Date.now();
+                    for (var item of data) {
+                        let relations = digestRelations(content, item);
+                        var val = {values: item, relations: relations};
+
+                        if (filterQuery(content, val)) {
+                            // add to collection                
+                            items.push(val);     
+
+                            // pagination
+                            if (content.query.filter.key == "id" && items.length >= last) {
+                                break;
+                            }    
+                        }
+                    }
+                    // var to = Date.now();                    
+                    // console.log("op", (to - from), items.length)
+
+                    if (count == 1) {                        
+                        resolve({items: orderAndPaginate(content, items, first, last)});
+                    }
+                    else {                       
+                        content.next({items: orderAndPaginate(content, items, first, last)});
+                    }
+                });
             });
         }
 
         /**
          * @name getContent
          * @description get a item by id
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function getContent(content, ignoreCache) {
-            var ct = firebase.database().ref(content.uri);
-            // suscribe
-            ct.on('value', function(result) {
-                var values = result.val();
-                var relations = digestRelations(content, result.val());
-                content.next({values: values, relations: relations});
-            });              
+            return new Promise((resolve, reject) => {                
+                var ct = firebase.database().ref(content.uri);
+                var count = 0;                
+                // suscribe
+                ct.on('value', function(result) {
+                    count++;
+                    var values = result.val();
+                    var relations = digestRelations(content, result.val());
+                    if (count == 1) {
+                        resolve({values: values, relations: relations});
+                    }
+                    else {
+                        content.next({values: values, relations: relations});
+                    }
+                });
+            });           
         }
 
         /**
          * @name createContent
          * @description create a item
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function createContent(content) {
             content.data.values.created = firebase.database.ServerValue.TIMESTAMP;
+            content.data.values.changed = firebase.database.ServerValue.TIMESTAMP;
             return new Promise((resolve, reject) => {
                 var ct = firebase.database().ref(content.contenttype);
                 var ref = ct.push();
@@ -110,12 +140,13 @@
         }
 
         /**
-         * @name createContent
-         * @description create a item by id
-         * @param {string} id
-         * @return promise
+         * @name updateContent
+         * @description update a item by id
+         * @param {content} StoreItem
+         * @return Promise
          */
         function updateContent(content) {
+            content.data.values.changed = firebase.database.ServerValue.TIMESTAMP;            
             return new Promise((resolve, reject) => {
                 var ct = firebase.database().ref(content.uri);
                 ct.set(content.data.values).then(function(){
@@ -128,8 +159,8 @@
         /**
          * @name deleteContent
          * @description remove a item by id
-         * @param {string} id
-         * @return promise
+         * @param {content} StoreItem
+         * @return Promise
          */
         function deleteContent(content) {
             return new Promise((resolve, reject) => {
@@ -140,32 +171,12 @@
             });
         }
 
-        /**
-         * @name addToCache
-         * @description add to cache
-         * @param {string} id
-         * @return promise
-         */
-        function addToCache(contenttype, id, data) {
+        /*******************************
+        *           INTERNALS
+        ********************************/
 
-        }
-
-        /**
-         * @name removeToCache
-         * @description remove a item of cache
-         * @param {string} id
-         * @return promise
-         */
-        function removeToCache() {
-        }
-
-        /**
-         * @name clearCache
-         * @description clear all cache
-         * @param {string} id
-         * @return promise
-         */
-        function clearCache() {
+        function parse(data) {
+            return JSON.parse(data);
         }
 
         function digestRelations(content, data){            
@@ -186,6 +197,58 @@
             return relations;
         }
 
+        function filterQuery(content, data) {
+            var object = content.query.filter;
+            for (var key in object) {
+                if (object.hasOwnProperty(key)) {
+                    var item = object[key];
+                    var val =  data.values[key];           
+                    switch (item.op) {
+                        case "=":
+                            return val == item.value;
+                        case ">":
+                            return val > item.value;
+                        case ">=":
+                            return val >= item.value;
+                        case "<":
+                            return val < item.value;
+                        case "<=":
+                            return val < item.value;
+                        case "<>":
+                        case "!=":
+                            return val != item.value;
+                        case "LIKE":
+                        case "CONTAINS":
+                            return val.includes(item.value);
+                        case "BETWEEN":
+                            var sp = val.split(",");
+                            return (item.value > sp[0] && item.value < sp[1])                
+                        default:
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function orderAndPaginate(content, items, first, last) {
+            var orderedItems =  _.orderBy(items, function(e) {
+                return e.values[content.query.order.value]}, [content.query.order.key]
+            );
+
+            return orderedItems.slice((first - 1), last);            
+        }
+
+        function toSet(object){
+            var mySet = new Set()
+            for (var key in object) {
+                if (object.hasOwnProperty(key)) {
+                    mySet.add(object[key]);                    
+                }
+            }
+            return mySet;
+        }
+
         function toArray(object){
             var arr = [];
             for (var key in object) {
@@ -195,6 +258,5 @@
             }
             return arr;
         }
-
     }
 })();

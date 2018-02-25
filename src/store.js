@@ -196,7 +196,9 @@
             self.dispatchEvent(event);
             if (event.defaultPrevented) {return;}
             // get of the server
-            api.getContent(self, ignoreCache);  
+            api.getContent(self, ignoreCache).then(function(data){
+                self.next(data);
+            });  
         }
 
         function next(result) {
@@ -408,14 +410,23 @@
         self.history = [];
         self.uri = self.contenttype;
         self.schema = schema.get(contenttype);
-        self.query = {};
+
+        self.query = {
+            filter: {},
+            order: {
+                key: "id",
+                values: "desc"
+            }
+        };
+
         self.limit = 10;
-        self.actual = 1;
-        self.count = 10;
-        self.pages = 1;
+        self.page = 1;
+        self.count = null;
+        self.pages = null;
         self.addAction = addAction.bind(self);
         self.addMutation = addMutation.bind(self);
         self.addGetter = addGetter.bind(self);
+        self.checkQuery = checkQuery.bind(self);
 
         // events
         self.addEventListener = addEventListener.bind(self);
@@ -442,7 +453,6 @@
         self.addAction('next', next);
         self.addAction('error', error);
         self.addAction('removeItem', removeItem);
-        //self.addAction('saveAll', saveAll);
         self.addAction('setQuery', setQuery);
         self.addAction('goToPage', goToPage);
         self.addAction('prevPage', prevPage);
@@ -450,22 +460,21 @@
 
         function get(ignoreCache) {
             var ignoreCache = ignoreCache || false;
-            self.query.page = self.actual
-
             // dispatch before event
             let event = new self.ContentEvent('next:before');                
             self.dispatchEvent(event);
-            if (event.defaultPrevented) { return; }
-            api.getCollection(self, ignoreCache);
+            if (event.defaultPrevented) { return; }              
+            api.getCollection(self, ignoreCache).then(function(data){
+                self.next(data);
+            })
         }
 
         function next(result) {
+            console.log("next...", result)
+
             // pagination
-            self.limit = result.limit;
             self.count = result.count;
             self.pages = result.pages;
-            self.actual = result.actual
-            self.query.page = self.actual;
 
             // items
             var list = [];
@@ -536,19 +545,19 @@
 
         // call next page
         function nextPage() {
-            self.actual = (self.actual * 1) + (1 * 1);
+            self.page = (self.page * 1) + (1 * 1);
             self.fetch();
         }
 
         // call previus page
         function prevPage() {
-            self.actual = (self.actual * 1) - (1 * 1);
+            self.page = (self.page * 1) - (1 * 1);
             self.fetch();
         }
 
         // go to specific page
         function goToPage(page) {
-            self.actual = (page * 1);
+            self.page = (page * 1);
             self.fetch(true);
         }
 
@@ -560,6 +569,10 @@
                 }                 
             }
         }
+
+        self.on('delete:item', function(data){
+            self.removeItem(data.id)
+        })
 
     }
 
@@ -617,9 +630,9 @@
                 for (var i = 0; i < self.callbacks[name].length; i++) {
                     if (event.propagationStopped) { break; }
                     if (isFunction(self.callbacks[name][i])) {
-                        event.currentHandler = self.callbacks[name][i];
+                        event.pageHandler = self.callbacks[name][i];
                         self.callbacks[name][i].apply(scope, [event]);
-                        event.currentHandler = null;                            
+                        event.pageHandler = null;                            
                     }
                 }
             }
@@ -653,7 +666,7 @@
             }
 
         function remove() {
-        event.target.removeEventListener(event.type, event.currentHandler)
+        event.target.removeEventListener(event.type, event.pageHandler)
         }
 
     }
@@ -675,11 +688,99 @@
 
     }
 
+     /**
+     * @name checkQuery
+     * @description iterate over the properties
+     * of the query property of a StorageItem,
+     * in case the operator is not supported
+     * in the implementation
+     * or the query does not have the correct format
+     * must throw an exception
+     * @param {supported} Array
+     * @return null
+     */
+    function checkQuery(supported) {
+        var object = this.query.filter;
+
+        if (!Array.isArray(supported) || typeof supported == "undefined") {
+            throw "an array of supported operators was not provided"; 
+        } 
+
+        var validations = {
+            "=": function(val) {
+                var type = typeof val;
+                return (type == "string" || type == "number");
+            },
+            ">": function(val) {
+                var type = typeof val;
+                return (type == "number");
+            },
+            ">=": function(val) {
+                var type = typeof val;                
+                return (type == "number");
+            },
+            "<": function(val) {
+                var type = typeof val;
+                return (type == "number");
+            },
+            "<=": function(val) {
+                var type = typeof val;
+                return (type == "string");
+            },
+            "<=": function(val) {
+                var type = typeof val;
+                return (type == "string");
+            },
+            "<>": function(val) {
+                var type = typeof val;
+                return (type == "string" || type == "number");
+            },
+            "!=": function(val) {
+                var type = typeof val;
+                return (type == "string" || type == "number");
+            },
+            "LIKE": function(val) {
+                var type = typeof val;
+                return (type == "string");
+            },
+            "CONTAINS": function(val) {
+                var type = typeof val;
+                return (type == "string");
+            },
+            "BETWEEN": function(val) {
+                var type = typeof val;
+                return (type == "string" && val.includes(","));
+            },
+
+        }
+        
+        for (var key in object) {
+            if (object.hasOwnProperty(key)) {
+                var element = object[key]; 
+                if (!element.hasOwnProperty('op')) {
+                    throw "missing operator in " + key; 
+                }
+                if (!element.hasOwnProperty('value')) {
+                    throw "missing value in " + key; 
+                }
+                if (!supported.includes(element.op)) {
+                    throw "unsopported operator: " + element.op;                         
+                }
+                if (!validations.hasOwnProperty(element.op)) {
+                    throw "no validation was found for this operator: " + element.op;                        
+                }
+                if (!validations[element.op](element.value)) {
+                    throw "the value is not valid: " + element.value + ", using the operator: " + element.op;                        
+                }
+
+            }
+        }            
+    }
+
     function isFunction(functionToCheck) {
         var getType = {};
         return functionToCheck && getType.toString.call(functionToCheck) === '[object Function]';
     }
-
 
     /**
      * @param {Object} dst Destination object.

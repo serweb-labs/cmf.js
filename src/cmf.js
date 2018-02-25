@@ -29,6 +29,7 @@
          ************************************/
         
 
+         /* firebase config object */
         container.value({
             name: "firebaseConfig",
             value: {
@@ -39,11 +40,45 @@
             }
         });
 
-         container.service({
+        /* firebase api adapter for Store */
+        /*
+        container.service({
             name: "api",
             di: ['firebaseConfig'],
             target: firebaseRtdbAdapter
+        });*/
+
+        /* indexedDb adapter for Store */
+        container.service({
+            name: "api",
+            target: indexedDBAdapter
         });
+
+        /* indexedDb to firebase sync,
+            work with indexedDb api adapter */
+        container.service({
+            name: "firebaseIdbSync",
+            target: firebaseIdbSync
+        });
+
+        /* safe chronologic unique keys */
+        container.service({
+            name: "idsGenerator",
+            di: false,
+            target: function(){
+                return generatePushID;
+            }
+        });
+
+        /* lodash */
+        container.service({
+            name: "_",
+            di: false,
+            target: function(){
+                return _;
+            }
+        });
+
 
         container.service({
             name: "schemaStatement",
@@ -101,6 +136,7 @@
             name: "person",
             target: person
         });
+      
 
         return container;
     }

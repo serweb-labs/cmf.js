@@ -2,8 +2,9 @@
     window.Container = new Proxy(function() {        
         // private
         var waiting = {};
-        var lazy = {};
+        var stack = {};
         var factory = {};
+        var limbo = {};
 
         // api    
         var self = this;
@@ -92,18 +93,30 @@
                     }
                 }
                 var cb = function(){
-                    var inject = names.map(function(name){
-                        return self.proxy[name];
-                    })
-                    return new obj.target(...inject)
+                    var inject = [];
+                    if (limbo.hasOwnProperty(name)) {
+                        throw "posible circular dependency. use container.getAsync(service) in verbose service";
+                    }
+                    
+                    limbo[name] = true;
+                    inject = names.map(function(name){      
+                        return self.get(name);                        
+                    })                   
+                   
+                    var n = new obj.target(...inject)
+                    delete limbo[name];
+                    return n;
+                   
                 }    
             }            
            
             // add lazy
             if (type == "service") {
-                lazy[name] = cb ? cb : obj.target;
+                stack[name] = cb ? cb : obj.target;
+
                 if (obj.lazy === false) {
-                    get(name)
+                    console.log("no es lazy", name)
+                    self.get(name)
                 }
             }
             else if (type == "factory") {
@@ -114,44 +127,14 @@
             dispatchWaiting(name);
     
             return true;
-        }
-        
-        // internals
-        function factory(name, callback) {
-            
-            // rejects
-            if (!callback) {
-                if (waiting.hasOwnProperty(name)) {
-                    if (waiting[name].hasOwnProperty('reject')) {
-                        waiting[name].reject(name);
-                    }
-                    delete waiting[name]
-                }
-                return false;
-            }
-    
-            // add to library
-            lazy[name] = callback.bind(self.proxy);
-            
-            // if someone waith notices of you
-            if (waiting.hasOwnProperty(name)) {
-                if (waiting[name].hasOwnProperty('resolve')) {
-                    waiting[name].resolve(self.get(name));
-                }
-                delete waiting[name]
-            }
-    
-            return true;
-        }
-        
-    
+        }           
             
         function has(name) {
-            return self.hasOwnProperty(name) || lazy.hasOwnProperty(name) || factory.hasOwnProperty(name);
+            return self.hasOwnProperty(name) || stack.hasOwnProperty(name) || factory.hasOwnProperty(name);
         }
     
-        function isLazy(name) {
-            return lazy.hasOwnProperty(name);
+        function inStack(name) {
+            return stack.hasOwnProperty(name);
         }
 
         function isFactory(name) {
@@ -159,17 +142,18 @@
         }
 
         function get(name) {
-            if (has(name)) {
+            if(self.hasOwnProperty(name)) {
+                return self[name];                
+            }
+            else if (has(name)) {
                 if (isFactory(name)) {
                     return factory[name].bind(self.proxy);
                 }
-                else if (isLazy(name)) {
+                else if (inStack(name)) {
                     if (!self.hasOwnProperty(name)) {
-                        self[name] = lazy[name].bind(self.proxy)();                   
+                        self[name] = stack[name].bind(self.proxy)();
+                        delete stack[name];                   
                     }                    
-                    return self[name];
-                }
-                else {
                     return self[name];
                 }
             }
@@ -203,7 +187,10 @@
             var inst = new target(...args);
             var omg = new Proxy(inst, {
                 get: function(target, name) {
-                    if (target.hasOwnProperty('get')) {
+                    if (target.hasOwnProperty(name)) {
+                        return target[name];
+                    }
+                    else if (target.hasOwnProperty('get')) {
                         return target.get(name);
                     }
                 },        

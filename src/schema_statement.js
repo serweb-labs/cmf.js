@@ -12,13 +12,13 @@ function SchemaStatement() {
     - users
     ***********************************/
 
-    var self = this;
+    this._version = 2;
 
     /**
      * @name: tasks
      *
      */
-    self.tasks = {
+    this.tasks = {
         "name": "tasks",
         "fields": {
             "title": {
@@ -60,7 +60,7 @@ function SchemaStatement() {
      * @name: users
      *
      */
-    self.users = {
+    this.users = {
         "name": "users",
         "fields": {
             "id": {

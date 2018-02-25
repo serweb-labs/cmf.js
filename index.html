@@ -14,10 +14,15 @@
     <script src="./src/indexed_db_adapter.js"></script>
     <script src="./src/schema_statement.js"></script>
     <script src="./src/views_statement.js"></script>
+    <script src="./src/ids_generator_fb.js"></script>
+    <script src="./src/firebase_idb_sync.js"></script>     
     <script src="https://www.gstatic.com/firebasejs/4.6.2/firebase.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.0.3/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/localForage/LocalForage/dist/localforage.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/jakearchibald/idb/lib/idb.js"></script>   
+    <script src="https://cdn.jsdelivr.net/gh/jakearchibald/idb/lib/idb.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.5/lodash.min.js"></script>
+    
+    <script src="https://dmurph.github.io/indexed-db-observers/polyfill.js"></script>
     
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/foundation/6.2.4/foundation.min.css">
@@ -97,12 +102,13 @@
 <body>
         <h1 style="text-align: center">real time db</h1>
 
-        <div id="app">
+        <div id="app">            
             <task-list :tasks="tasks"></task-list>
           </div>
           
           <template id="task-list">
               <section class="tasks">
+                
                 <h1>
                   Tasks 
                   <transition name="fade">
@@ -166,29 +172,6 @@
           </template>
 </body>
 <script>
-    var cmf = cmf();
-    var app = new Vue({
-      el: '#app',
-      data: {
-        tasks: []
-      },
-      created: function () {
-        var vm = this;
-        var tasks = new cmf.StoreCollection("tasks");
-        
-        console.log("collection:", cmf.tasks);
-
-        tasks.on('next', function(e){
-          vm.tasks = this.data;          
-        })
-
-        tasks.on('next:item', function(e){
-          //console.log(this.data);
-        })
-
-        tasks.fetch();
-      }
-    });
 
 
     Vue.component('task-list', {
@@ -213,7 +196,7 @@
               var b = new cmf.StoreItem("tasks", null);
               b.mutate.setVals({title: this.newTask, contenttype: "tasks", completed: false});
               b.create();
-              this.tasks.push(b);
+              //this.tasks.push(b);
               this.newTask = '';
             }
           },
@@ -260,6 +243,43 @@
         }
       });
       
+      var cmf = cmf();
+      var app = new Vue({
+        el: '#app',
+        data: {
+          tasks: []
+        },
+        created: function () {
+          var vm = this;
+          var tasks = new cmf.StoreCollection("tasks");
+          /*
+          tasks.query.filter = {
+            title: {
+              op: "LIKE",
+              value: "s"
+            }
+          }*/
+
+          tasks.query.order = {
+            value: "title",
+            key: "desc"
+          }
+
+          tasks.limit = 50;
+          tasks.page = 1;
+
+          tasks.on('next:item', function(e){
+            //console.log(this.data);
+          })
+  
+          tasks.on('next', function(e){
+            vm.tasks = this.data;          
+          })
+  
+          tasks.fetch();
+        }
+      });
+  
 
 
 
