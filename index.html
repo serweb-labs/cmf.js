@@ -15,7 +15,10 @@
     <script src="./src/schema_statement.js"></script>
     <script src="./src/views_statement.js"></script>
     <script src="./src/ids_generator_fb.js"></script>
-    <script src="./src/firebase_idb_sync.js"></script>     
+    <script src="./src/firebase_idb_sync.js"></script>
+    <script src="./src/roles_based_access_control.js"></script>  
+    <script src="./src/authentication.js"></script>
+    <script src="./src/fake_authentication_provider.js"></script>
     <script src="https://www.gstatic.com/firebasejs/4.6.2/firebase.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.0.3/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/localForage/LocalForage/dist/localforage.min.js"></script>
@@ -151,6 +154,7 @@
                                @complete="completeTask(task)"
                                :task="task"
                                :key="task"
+                               @click="edit(task)"
                     ></task-item>
                 </transition-group>
               </section>

@@ -79,7 +79,6 @@
             }
         });
 
-
         container.service({
             name: "schemaStatement",
             target: SchemaStatement
@@ -98,6 +97,25 @@
         container.service({
             name: "views",
             target: ViewsService
+        });
+
+        container.service({
+            name: "authorization",
+            target: rolesBasedAccessControl
+        });
+
+        container.service({
+            name: "authentication",
+            target: authentication
+        });
+        
+        container.service({
+            name: "fakeAuthenticationProvider",
+            di: false,
+            lazy: false,
+            target: function() {                
+                return new fakeAuthenticationProvider(this.authentication);
+            }
         });
 
         container.service({
