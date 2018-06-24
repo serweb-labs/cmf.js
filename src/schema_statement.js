@@ -12,7 +12,7 @@ function SchemaStatement() {
     - users
     ***********************************/
 
-    this._version = 2;
+    this._version = 3;
 
     /**
      * @name: tasks

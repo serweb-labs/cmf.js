@@ -118,6 +118,15 @@
             }
         });
 
+        container.factory({
+            name: "IdbManager",
+            di: false,
+            target: function(name, version) {
+                return new IdbManager(this.schema, name, version)
+            }
+        });
+      
+
         container.service({
             name: "StoreItem",
             di: false,
@@ -155,6 +164,13 @@
             target: person
         });
       
+        container.factory({
+            name: "queue",
+            di: false,
+            target: function(){
+                return new Seq();
+            }
+        });
 
         return container;
     }
