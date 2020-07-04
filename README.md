@@ -1,4 +1,4 @@
-# cmf.js
+# cmf.js (proof of concept)
  - Handle any data model.
  - Connect to any server (example in **Firebase Real Time DB**).
  - Ready for reactivity.
